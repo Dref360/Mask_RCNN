@@ -41,6 +41,8 @@ import utils
 from config import Config
 from PIL import Image
 
+from vitalutil import OrderedSet
+
 pjoin = os.path.join
 # Root directory of the project
 ROOT_DIR = os.getcwd()
@@ -93,9 +95,9 @@ class JsonHandler():
         self.gt_train = 'gt_train.csv'
         self.gt_test = 'gt_test.csv'
         with open(pjoin(self.path, self.gt_train)) as f:
-            self.gt_train = list(set([pjoin(self.path, 'images', x[0] + '.jpg') for x in csv.reader(f)]))
+            self.gt_train = list(OrderedSet([pjoin(self.path, 'images', x[0] + '.jpg') for x in csv.reader(f)]))
         with open(pjoin(self.path, self.gt_test)) as f:
-            self.gt_test = set([pjoin(self.path, 'images', x[0] + '.jpg') for x in csv.reader(f)])
+            self.gt_test = OrderedSet([pjoin(self.path, 'images', x[0] + '.jpg') for x in csv.reader(f)])
 
         self.gt_train, self.gt_val = np.split(self.gt_train, [int(0.8*len(self.gt_train))])
 
@@ -136,14 +138,17 @@ class miotcdDataset(utils.Dataset):
         for i,cls  in enumerate(class_ids):
             self.add_class("miotcd", i, cls)
 
-        if not os.path.exists('shapes.h5'):
-            sh_file = h5py.File('shapes.h5')
+        h5filename = 'shapes{}.h5'.format(phase)
+
+        if not os.path.exists(h5filename):
+            sh_file = h5py.File(h5filename,'w')
             for i in image_ids:
                 k = Image.open(i)
                 sh_file.create_dataset(i.split('/')[-1],data=np.array([k.width,k.height]))
+            sh_file.flush()
             sh_file.close()
 
-        sh_file = h5py.File('shapes.h5')
+        sh_file = h5py.File(h5filename,'r')
 
 
 
@@ -157,7 +162,7 @@ class miotcdDataset(utils.Dataset):
                 height=sh_file[i.split('/')[-1]][1],
                 annotations=self.jsonHandler.datas[i])
         if return_miotcd:
-            return miotcd
+            return self
 
     def load_mask(self, image_id):
         """Load instance masks for the given image.
@@ -184,15 +189,26 @@ class miotcdDataset(utils.Dataset):
         # of class IDs that correspond to each channel of the mask.
         for cls,outline in annotations:
             mask = np.zeros([h,w,1])
-            cv2.drawContours(mask,outline,-1,1,-1)
-            cl = self.jsonHandler.classes.index(cls)
+            cv2.drawContours(mask,[np.array(outline)],-1,1,-1)
+            cl = self.jsonHandler.classes.index(self.normalize_classes(cls))
             instance_masks.append(mask)
             class_ids.append(cl)
 
-        instance_masks = np.stack(instance_masks, axis=2)
+        instance_masks = np.stack(instance_masks, axis=2)[...,0]
         class_ids = np.array(class_ids, dtype=np.int32)
 
         return instance_masks, class_ids
+
+    @staticmethod
+    def normalize_classes(cls):
+        cls = cls.lower()
+        dat = {'pickup truck': 'pickup_truck',
+               'articulated truck': 'articulated_truck',
+               'non-motorized vehicle': 'non-motorized_vehicle',
+               'motorized vehicle': 'motorized_vehicle',
+               'single unit truck': 'single_unit_truck',
+               'work van': 'work_van', 'suv': 'car', 'minivan': 'car'}
+        return dat[cls] if cls in dat else cls
 
 
 
@@ -204,7 +220,6 @@ def build_miotcd_results(dataset, image_ids, rois, class_ids, scores, masks):
     """Arrange resutls to match miotcd specs in http://miotcddataset.org/#format
     """
     # If no results, return an empty list
-    raise NotImplemented
     if rois is None:
         return []
 
@@ -222,7 +237,7 @@ def build_miotcd_results(dataset, image_ids, rois, class_ids, scores, masks):
                 "category_id": dataset.get_source_class_id(class_id, "miotcd"),
                 "bbox": [bbox[1], bbox[0], bbox[3] - bbox[1], bbox[2] - bbox[0]],
                 "score": score,
-                "segmentation": maskUtils.encode(np.asfortranarray(mask))
+                "segmentation": mask
             }
             results.append(result)
     return results
@@ -235,7 +250,6 @@ def evaluate_miotcd(dataset, miotcd, eval_type="bbox", limit=0):
     limit: if not 0, it's the number of images to use for evaluation
     """
     # Pick miotcd images from the dataset
-    raise NotImplemented
     image_ids = dataset.image_ids
 
     # Limit to a subset
@@ -264,7 +278,9 @@ def evaluate_miotcd(dataset, miotcd, eval_type="bbox", limit=0):
                                              r["scores"], r["masks"])
         results.extend(image_results)
 
-    # Load results. This modifies results with additional attributes.
+    import pickle
+    pickle.dump(results,open('result.pkl','wb'))
+    """# Load results. This modifies results with additional attributes.
     miotcd_results = miotcd.loadRes(results)
 
     # Evaluate
@@ -273,7 +289,7 @@ def evaluate_miotcd(dataset, miotcd, eval_type="bbox", limit=0):
     miotcdEval.evaluate()
     miotcdEval.accumulate()
     miotcdEval.summarize()
-
+    """
     print("Prediction time: {}. Average {}/image".format(
         t_prediction, t_prediction / len(image_ids)))
     print("Total time: ", time.time() - t_start)
@@ -288,7 +304,7 @@ if __name__ == '__main__':
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='Train Mask R-CNN on MS miotcd.')
+        description='Train Mask R-CNN on miotcd.')
     parser.add_argument("command",
                         metavar="<command>",
                         help="'train' or 'evaluate' on MS miotcd")
@@ -341,18 +357,19 @@ if __name__ == '__main__':
     print("Loading weights ", model_path)
     model.load_weights(model_path, by_name=True)
 
+    jsonHandler = JsonHandler(args.dataset)
     # Train or evaluate
     if args.command == "train":
         # Training dataset. Use the training set and 35K from the
         # validation set, as as in the Mask RCNN paper.
         dataset_train = miotcdDataset()
-        dataset_train.load_miotcd(args.dataset, "train")
-        dataset_train.load_miotcd(args.dataset, "val35k")
+        dataset_train.load_miotcd(jsonHandler, "train")
+        #dataset_train.load_miotcd(jsonHandler, "val")
         dataset_train.prepare()
 
         # Validation dataset
         dataset_val = miotcdDataset()
-        dataset_val.load_miotcd(args.dataset, "minival")
+        dataset_val.load_miotcd(jsonHandler, "val")
         dataset_val.prepare()
 
         # This training schedule is an example. Update to fit your needs.
@@ -362,7 +379,7 @@ if __name__ == '__main__':
         print("Training network heads")
         model.train(dataset_train, dataset_val,
                     learning_rate=config.LEARNING_RATE,
-                    epochs=40,
+                    epochs=80,
                     layers='heads')
 
         # Training - Stage 2
@@ -370,7 +387,7 @@ if __name__ == '__main__':
         print("Training Resnet layer 4+")
         model.train(dataset_train, dataset_val,
                     learning_rate=config.LEARNING_RATE / 10,
-                    epochs=100,
+                    epochs=200,
                     layers='4+')
 
         # Training - Stage 3
@@ -378,13 +395,13 @@ if __name__ == '__main__':
         print("Training Resnet layer 3+")
         model.train(dataset_train, dataset_val,
                     learning_rate=config.LEARNING_RATE / 100,
-                    epochs=200,
+                    epochs=300,
                     layers='all')
 
     elif args.command == "evaluate":
         # Validation dataset
         dataset_val = miotcdDataset()
-        miotcd = dataset_val.load_miotcd(args.dataset, "minival", return_miotcd=True)
+        miotcd = dataset_val.load_miotcd(jsonHandler, "test", return_miotcd=True)
         dataset_val.prepare()
 
         # TODO: evaluating on 500 images. Set to 0 to evaluate on all images.
