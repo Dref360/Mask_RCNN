@@ -257,30 +257,37 @@ def evaluate_miotcd(dataset, miotcd, eval_type="bbox", limit=0):
 
     t_prediction = 0
     t_start = time.time()
-    GET_RAW = False
+    GET_RAW = True
     csv_data = []
+    acc = []
     with open('result.pkl', 'wb') as f:
-        for i, image_id in tqdm(enumerate(image_ids)):
-            # Load image
-            image = dataset.load_image(image_id)
+        try:
+            for i, image_id in tqdm(enumerate(image_ids)):
+                # Load image
+                image = dataset.load_image(image_id)
 
-            # Run detection
-            t = time.time()
-            r = model.detect([image], verbose=0)[0]
-            t_prediction += (time.time() - t)
+                # Run detection
+                t = time.time()
+                r = model.detect([image], verbose=0)[0]
+                t_prediction += (time.time() - t)
 
-            # Convert results to miotcd format
-            image_results = build_miotcd_results(dataset, miotcd_image_ids[i:i + 1],
-                                                 r["rois"], r["class_ids"],
-                                                 r["scores"], r["masks"])
-            if GET_RAW:
-                pickle.dump(f,image_results)
-            for v in image_results:
-                x1, y1, w, h = v['bbox']
-                f = v['image_id'].split('/')[-1][:-4]
-                sc = v['score']
-                cls = JsonHandler.classes[v['category_id'] + 1]
-                csv_data.append((f, cls, sc, x1, y1, x1 + w, y1 + h))
+                # Convert results to miotcd format
+                image_results = build_miotcd_results(dataset, miotcd_image_ids[i:i + 1],
+                                                     r["rois"], r["class_ids"],
+                                                     r["scores"], r["masks"])
+                if GET_RAW:
+                    acc+=image_results
+                for v in image_results:
+                    x1, y1, w, h = v['bbox']
+                    f_name = v['image_id'].split('/')[-1][:-4]
+                    sc = v['score']
+                    cls = JsonHandler.classes[v['category_id'] + 1]
+                    csv_data.append((f_name, cls, sc, x1, y1, x1 + w, y1 + h))
+        except Exception as e:
+            print(e)
+            pass
+        finally:
+            pickle.dump(acc, f)
     with open('result.csv', 'w') as f:
         f.writelines([','.join([str(k1) for k1 in k]) + '\n' for k in csv_data])
 
@@ -332,10 +339,11 @@ if __name__ == '__main__':
             # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
             GPU_COUNT = 1
             IMAGES_PER_GPU = 1
+            DETECTION_MIN_CONFIDENCE = 0
 
 
         config = InferenceConfig()
-    config.print()
+    config.display()
 
     # Create model
     if args.command == "train":
@@ -409,7 +417,7 @@ if __name__ == '__main__':
         dataset_val.prepare()
 
         # TODO: evaluating on 500 images. Set to 0 to evaluate on all images.
-        evaluate_miotcd(dataset_val, miotcd, "bbox", limit=0)
+        evaluate_miotcd(dataset_val, miotcd, "bbox", limit=200)
     else:
         print("'{}' is not recognized. "
               "Use 'train' or 'evaluate'".format(args.command))
