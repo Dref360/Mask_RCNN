@@ -1129,18 +1129,18 @@ def mrcnn_mask_loss_graph(target_masks, target_class_ids, pred_masks):
                      K.binary_crossentropy(target=y_true, output=y_pred),
                      tf.constant(0.0))
 
-    """fx, fy = sobel_filter(1)
+    fx, fy = sobel_filter(1)
     true_grad = tf.cast(tf.greater(
         tf.reduce_sum(im_gradient(tf.expand_dims(y_true, -1), fx, fy), axis=-1, keep_dims=True), 1.5), tf.float32)
     pred_grad = tf.tanh(tf.reduce_sum(im_gradient(tf.expand_dims(y_pred, -1), fx, fy), axis=-1, keep_dims=True))
     #loss1 = K.switch(skip, loss_IoU(pred_grad, true_grad), tf.constant(0.0))
     loss1 = K.switch(skip, K.mean(loss_IoU(pred_grad,true_grad)),tf.constant(0.0))
-    loss1 = K.reshape(loss1, [1, 1])"""
+    loss1 = K.reshape(loss1, [1, 1])
 
     loss2 = K.mean(loss2)
     loss2 = K.reshape(loss2, [1, 1])
-    """loss2 = tf.where(tf.logical_or(skip,tf.equal(loss1,0)), tf.Print(loss2 + 0.2*loss1, [loss2, loss1, skip], "LOSS2, LOSS1",first_n=10)
-                    , tf.Print(K.reshape(tf.constant(0.0), [1, 1]),[skip],"NOTHING",first_n=10))"""
+    loss2 = tf.where(tf.logical_or(skip,tf.equal(loss1,0)), tf.Print(loss2 + 0.1*loss1, [loss2, loss1, skip], "LOSS2, LOSS1",first_n=10)
+                    , tf.Print(K.reshape(tf.constant(0.0), [1, 1]),[skip],"NOTHING",first_n=10))
     return K.switch(tf.is_nan(loss2),tf.zeros([1,1]),loss2)
     #return loss2
 

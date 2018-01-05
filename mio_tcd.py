@@ -76,6 +76,8 @@ class miotcdConfig(Config):
     # Number of classes (including background)
     NUM_CLASSES = 1 + 10  # miotcd has 10 classes
 
+    LEARNING_RATE = 0.001
+
 
 ############################################################
 #  Dataset
