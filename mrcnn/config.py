@@ -199,7 +199,7 @@ class Config(object):
     #     None: Train BN layers. This is the normal mode
     #     False: Freeze BN layers. Good when using a small batch size
     #     True: (don't use). Set layer in training mode even when inferencing
-    TRAIN_BN = False  # Defaulting to False since batch size is often small
+    TRAIN_BN = None  # Defaulting to False since batch size is often small
 
     # Gradient norm clipping
     GRADIENT_CLIP_NORM = 5.0
