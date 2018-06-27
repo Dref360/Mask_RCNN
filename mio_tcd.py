@@ -29,6 +29,7 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
 import csv
 import json
 import os
+import random
 import time
 from collections import OrderedDict
 
@@ -94,8 +95,10 @@ class JsonHandler():
         self.datas = OrderedDict([self.__handle_json_inner(v) for v in jsonfile.values()])
         self.gt_train = 'gt_train.csv'
         self.gt_test = 'gt_test.csv'
+        random.seed(1337)
         with open(pjoin(self.path, self.gt_train)) as f:
             self.gt_train = list(OrderedSet([pjoin(self.path, 'images', x[0] + '.jpg') for x in csv.reader(f)]))
+            random.shuffle(self.gt_train)
         with open(pjoin(self.path, self.gt_test)) as f:
             self.gt_test = OrderedSet([pjoin(self.path, 'images', x[0] + '.jpg') for x in csv.reader(f)])
 
