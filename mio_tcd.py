@@ -331,7 +331,7 @@ if __name__ == '__main__':
 
 
         config = InferenceConfig()
-    config.print()
+    config.display()
 
     # Create model
     if args.command == "train":
