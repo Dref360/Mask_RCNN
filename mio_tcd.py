@@ -36,9 +36,9 @@ import cv2
 import h5py
 import numpy as np
 
-import model as modellib
-import utils
-from config import Config
+import mrcnn.model as modellib
+import mrcnn.utils as utils
+from mrcnn.config import Config
 from PIL import Image
 
 from vitalutil import OrderedSet
@@ -74,7 +74,7 @@ class miotcdConfig(Config):
     # GPU_COUNT = 8
 
     # Number of classes (including background)
-    NUM_CLASSES = 1 + 10  # miotcd has 10 classes
+    NUM_CLASSES = 1 + 11  # miotcd has 11 classes
 
 
 ############################################################
